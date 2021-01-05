@@ -5,8 +5,10 @@
 
 also
 
-* Python 3.7 
+* Python 3.7 + pip 
+
 or
+
 * Docker
 
 ### Usage
@@ -28,7 +30,11 @@ docker run bb_bot
 ```
 
 
-If not using docker run the python script bot.py with the command:
+If not using docker, install pip requirements with:
+
+```pip install -r requirements.txt```
+
+and then run the python script `bot.py` with the command:
 
 ```python bot.py```
 
