@@ -1,0 +1,3 @@
+selenium
+httpx[http2]
+python-dotenv
