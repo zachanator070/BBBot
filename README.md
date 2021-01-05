@@ -23,8 +23,8 @@ If using Docker use the command:
 or
 
 ```
-docker build -t 3080_bot .
-docker run 3080_bot
+docker build -t bb_bot .
+docker run bb_bot
 ```
 
 
