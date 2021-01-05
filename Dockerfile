@@ -3,7 +3,6 @@ FROM python:3.7
 RUN apt update
 RUN apt install -y firefox-esr
 
-ADD geckodriver /usr/bin
 RUN mkdir /home/bot
 WORKDIR /home/bot
 ADD requirements.txt .

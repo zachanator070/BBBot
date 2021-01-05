@@ -1,3 +1,4 @@
 selenium
 httpx[http2]
 python-dotenv
+webdriver-manager

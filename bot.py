@@ -7,6 +7,7 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions
+from webdriver_manager.firefox import GeckoDriverManager
 import asyncio
 
 import os
@@ -63,7 +64,7 @@ class BBClient:
         fireFoxOptions = webdriver.FirefoxOptions()
         fireFoxOptions.headless = True
         fireFoxOptions.set_preference("geo.enabled", False)
-        self.driver = webdriver.Firefox(options=fireFoxOptions)
+        self.driver = webdriver.Firefox(options=fireFoxOptions, executable_path=GeckoDriverManager().install())
         self.driver.get('https://www.bestbuy.com')
         self.driver.get('https://www.bestbuy.com/identity/global/signin')
 
