@@ -1,7 +1,8 @@
 FROM python:3.7
 
 RUN apt update
-RUN apt install -y firefox-esr
+RUN apt install -y firefox-esr wget
+
 
 RUN mkdir /home/bot
 WORKDIR /home/bot

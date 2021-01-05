@@ -359,30 +359,28 @@ class BBBot:
                 await asyncio.sleep(REFRESH_INTERVAL_SECONDS)
                 available = await self.check_status(sku)
             self.logger.info(f'Item {sku} available!')
-            await self.lock.acquire()
-            in_cart = await self.add_to_cart(sku)
-            while not in_cart:
+            async with self.lock:
                 in_cart = await self.add_to_cart(sku)
-            self.logger.info(f'Item {sku} in cart!')
-            await self.get_fast_track()
-            self.order = await self.get_order()
-            await self.set_shipping_info()
-            await self.refresh_payment_options()
-            await self.validate_order()
-            await self.set_payment_method()
-            await self.refresh_payment_options()
-            await self.authorize_payment()
-            await self.complete_checkout()
-            self.logger.info('Payment completed!')
-            order_id = self.order['id']
-            self.logger.info(f'Order {order_id} successfully completed!')
-            await self.close()
+                while not in_cart:
+                    in_cart = await self.add_to_cart(sku)
+                self.logger.info(f'Item {sku} in cart!')
+                await self.get_fast_track()
+                self.order = await self.get_order()
+                await self.set_shipping_info()
+                await self.refresh_payment_options()
+                await self.validate_order()
+                await self.set_payment_method()
+                await self.refresh_payment_options()
+                await self.authorize_payment()
+                await self.complete_checkout()
+                self.logger.info('Payment completed!')
+                order_id = self.order['id']
+                self.logger.info(f'Order {order_id} successfully completed!')
+                await self.close()
         except BBApiException as e:
-            self.lock.release()
             self.logger.warning(e)
             await self.run(sku)
         except Exception as e:
-            self.lock.release()
             self.logger.critical(e)
             await self.run(sku)
 
