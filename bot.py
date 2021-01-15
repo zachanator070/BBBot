@@ -18,10 +18,12 @@ CC_CCV = os.getenv('CC_CCV')
 BB_USERNAME = os.getenv('BB_USERNAME')
 BB_PASSWORD = os.getenv('BB_PASSWORD')
 DEFAULT_REFRESH_INTERVAL_SECONDS = 30
-REFRESH_INTERVAL_SECONDS = os.getenv('REFRESH_INTERVAL_SECONDS', DEFAULT_REFRESH_INTERVAL_SECONDS)
+REFRESH_INTERVAL_SECONDS = int(os.getenv('REFRESH_INTERVAL_SECONDS', DEFAULT_REFRESH_INTERVAL_SECONDS))
 
 
 class BBBrowserClient:
+
+    WAIT_FOR_ELEMENT_SECONDS = 5
 
     def __init__(self):
         if BB_USERNAME is None or BB_PASSWORD is None:
@@ -48,7 +50,7 @@ class BBBrowserClient:
         login_button = self.try_get_element_by_xpath('/html/body/div[1]/div/section/main/div[1]/div/div/div/div/form/div[4]/button')
         login_button.click()
 
-        time.sleep(5)
+        time.sleep(self.WAIT_FOR_ELEMENT_SECONDS)
 
         self.cookies = self.driver.get_cookies()
 
@@ -56,7 +58,7 @@ class BBBrowserClient:
 
     def try_get_element_by_xpath(self, xpath):
 
-        element = WebDriverWait(self.driver, 5).until(
+        element = WebDriverWait(self.driver, self.WAIT_FOR_ELEMENT_SECONDS).until(
             expected_conditions.element_to_be_clickable((By.XPATH, xpath))
         )
         return element
@@ -66,6 +68,8 @@ class BBApiClient:
 
     BB_BASE_URL = 'https://www.bestbuy.com'
     USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36'
+
+    REQUEST_TIMEOUT_SECONDS = 30
 
     def __init__(self, client: httpx.AsyncClient):
         self.client = client
@@ -81,6 +85,7 @@ class BBApiClient:
             kwargs['headers'].update(headers)
 
         response = await self.client.request(
+            timeout=self.REQUEST_TIMEOUT_SECONDS,
             **kwargs
         )
 
@@ -164,9 +169,14 @@ class BBBot:
         self.browser_client.login()
         self.logger.info('Logged in!')
 
-    async def check_status(self, sku: str):
-        response = await self.api_client.get(f'/api/3.0/priceBlocks?skus={sku}')
-        return response.json()[0]['sku']['buttonState']['buttonState'] == 'ADD_TO_CART'
+    async def check_status(self, skus: list):
+        skus_param = ','.join(skus)
+        response = await self.api_client.get(f'/api/3.0/priceBlocks?skus={skus_param}')
+        skus_available = []
+        for item in response.json():
+            if item['sku']['buttonState']['buttonState'] == 'ADD_TO_CART':
+                skus_available.append(item['sku']['skuId'])
+        return skus_available
 
     async def add_to_cart(self, sku: str):
         response = await self.api_client.post('/cart/api/v1/addToCart', {'items': [{'skuId': sku}]})
@@ -345,15 +355,11 @@ class BBBot:
 
         return response
 
-    async def run(self, sku: str):
+    async def attempt_to_buy(self, skus: list):
         try:
-            available = await self.check_status(sku)
-            while not available:
-                self.logger.info(f'Item {sku} not in stock...')
-                await asyncio.sleep(REFRESH_INTERVAL_SECONDS)
-                available = await self.check_status(sku)
-            self.logger.info(f'Item {sku} available!')
-            async with self.lock:
+
+            available_skus = await self.get_available_skus(skus)
+            for sku in available_skus:
                 in_cart = await self.add_to_cart(sku)
                 while not in_cart:
                     in_cart = await self.add_to_cart(sku)
@@ -375,26 +381,30 @@ class BBBot:
             self.logger.info('Caught keyboard interrupt, closing down')
         except BBApiException as e:
             self.logger.warning(str(e.__class__.__name__) + ' ' + str(e))
-            await self.run(sku)
+            await self.attempt_to_buy(skus)
         except Exception as e:
             self.logger.critical(str(e.__class__.__name__) + ' ' + str(e))
-            await self.run(sku)
+            await self.attempt_to_buy(skus)
 
-    async def attempt_to_buy(self, skus: list):
+    async def get_available_skus(self, skus: list) -> list:
+        skus_string = ','.join(skus)
+        self.logger.info(f'Checking skus {skus_string}')
+        available_skus = await self.check_status(skus)
+        while len(available_skus) == 0:
+            self.logger.info(f'Items not in stock...')
+            await asyncio.sleep(REFRESH_INTERVAL_SECONDS)
+            available_skus = await self.check_status(skus)
+        return available_skus
+
+    async def monitor_skus(self, skus: list):
         if len(skus) == 0:
             raise ValueError('Skus not defined!')
         self.login()
         self.api_client.set_cookies(self.browser_client.cookies)
-        tasks = []
-        for sku in skus:
-            task = asyncio.create_task(self.run(sku))
-            tasks.append(task)
-
-        for task in tasks:
-            await task
+        await self.attempt_to_buy(skus)
 
 
-SKUS = os.getenv('SKUS', [])
+SKUS = os.getenv('SKUS', '')
 
 
 async def main():
@@ -402,7 +412,7 @@ async def main():
     api_client = BBApiClient(async_client)
     browser_client = BBBrowserClient()
     bot = BBBot(api_client, browser_client)
-    await bot.attempt_to_buy(SKUS.split(','))
+    await bot.monitor_skus(SKUS.split(','))
 
 if __name__ == '__main__':
     try:
